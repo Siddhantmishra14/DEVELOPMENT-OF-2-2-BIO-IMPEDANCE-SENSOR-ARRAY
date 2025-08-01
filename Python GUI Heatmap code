@@ -1,0 +1,73 @@
+import serial
+import matplotlib.pyplot as plt
+import numpy as np
+import time
+
+# ------------------------ Configuration ------------------------
+SERIAL_PORT = 'COM3'      # Change this to match your port
+BAUD_RATE = 9600
+GRID_SIZE = (2, 2)         # 2x2 impedance matrix
+REFRESH_INTERVAL = 1       # seconds between updates
+# ---------------------------------------------------------------
+
+def parse_matrix(serial_data):
+    try:
+        lines = serial_data.strip().split('\n')
+        matrix = []
+        for line in lines:
+            if "[" in line:
+                values = line.strip("[] \r").split()
+                row = [float(v) for v in values]
+                matrix.append(row)
+        return np.array(matrix)
+    except:
+        return np.zeros(GRID_SIZE)
+
+# Initialize serial connection
+ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2)
+time.sleep(2)  # Wait for Arduino to reset
+
+# Create initial heatmap
+fig, ax = plt.subplots()
+data = np.zeros(GRID_SIZE)
+heatmap = ax.imshow(data, cmap='viridis', vmin=0, vmax=5000)
+
+cbar = plt.colorbar(heatmap)
+cbar.set_label("Impedance (Ohms)")
+ax.set_title("Real-Time 2x2 Bio-Impedance Heatmap")
+plt.xticks([0, 1], ["Col 1", "Col 2"])
+plt.yticks([0, 1], ["Row 1", "Row 2"])
+
+def update_heatmap():
+    global data
+    buffer = ''
+    while True:
+        if ser.in_waiting:
+            try:
+                buffer += ser.read(ser.in_waiting).decode()
+                if "---------------------------" in buffer:
+                    matrix = parse_matrix(buffer)
+                    data = matrix
+                    heatmap.set_data(data)
+                    ax.set_title(f"2×2 Impedance Matrix (Updated)")
+                    plt.draw()
+                    plt.pause(0.001)
+                    buffer = ''
+            except Exception as e:
+                print("Error:", e)
+                buffer = ''
+
+# Run the live heatmap
+print("Starting real-time impedance visualization...")
+plt.ion()
+plt.show()
+
+
+
+
+try:
+    update_heatmap()
+except KeyboardInterrupt:
+    print("Terminated by user.")
+finally:
+    ser.close()
